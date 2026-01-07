@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HÄLYTYSVAHTI PRO</title>
+    <style>
+        :root { --danger: #ff0000; --road: #00ff00; --bg: #050505; }
+        body { background: var(--bg); color: white; font-family: sans-serif; margin: 0; padding: 0; }
+        .header { background: #111; padding: 20px; border-bottom: 2px solid #333; text-align: center; }
+        .live-dot { height: 10px; width: 10px; background: var(--danger); border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.2; } 100% { opacity: 1; } }
+        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+        .card { background: #1a1a1a; border-radius: 10px; padding: 15px; margin-bottom: 10px; border-left: 5px solid #444; }
+        .card.near { border-left-color: var(--danger); background: #200; }
+        .card.highway { border-left-color: var(--road); border: 1px solid var(--road); }
+        button#start { width: 100%; padding: 25px; background: #007bff; color: white; border: none; font-weight: bold; font-size: 1.2em; border-radius: 8px; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span class="live-dot"></span> <b>Viranomais-Live GPS</b>
+        <div id="status" style="font-size: 0.8em; color: #888;">Valmis aloitukseen</div>
+    </div>
+    <div class="container">
+        <button id="start" onclick="run()">KÄYNNISTÄ REAALIAIKAINEN SEURANTA</button>
+        <div id="feed"></div>
+    </div>
+<script>
+    let userCity = ""; let seen = new Set(); const synth = window.speechSynthesis;
+    async function run() {
+        document.getElementById('start').style.display = 'none';
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(async (pos) => {
+                document.getElementById('status').innerText = `GPS Aktiivinen: ${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)}`;
+                if (!userCity) {
+                    const r = await fetch('https://ipapi.co/json/'); const d = await r.json(); userCity = d.city;
+                }
+            });
+        }
+        setInterval(update, 15000); update();
+    }
+    async function update() {
+        const r = await fetch('/api/full_feed'); const data = await r.json();
+        data.reverse().forEach(item => {
+            if (!seen.has(item.id)) {
+                const t = item.title.toLowerCase(); const s = item.summary.toLowerCase();
+                const isHwy = /(vt\d+|e\d+|valtatie|kehä|moottoritie)/i.test(t);
+                const isLocal = userCity && (t.includes(userCity.toLowerCase()) || s.includes(userCity.toLowerCase()));
+                if (isHwy || isLocal) {
+                    seen.add(item.id); render(item, isHwy, isLocal); speak(item, isHwy, isLocal);
+                }
+            }
+        });
+    }
+    function render(item, h, l) {
+        const f = document.getElementById('feed'); const c = document.createElement('div');
+        c.className = `card ${l ? 'near' : ''} ${h ? 'highway' : ''}`;
+        c.innerHTML = `<strong>${item.source}</strong><h3>${item.title}</h3><p>${item.summary}</p>`;
+        f.prepend(c);
+    }
+    function speak(item, h, l) {
+        let m = h ? `Tie-ilmoitus: ${item.title}` : `Hälytys lähelläsi: ${item.title}`;
+        const u = new SpeechSynthesisUtterance(m); u.lang = 'fi-FI'; synth.speak(u);
+    }
+</script>
+</body>
+</html>
